@@ -118,7 +118,7 @@ async function getAccessToken(env, account) {
     const newRefreshToken = data.refresh_token || account.refresh_token;
 
     // 更新数据库
-    await env.XYTJ_OUTLOOK.prepare(
+    await env.db.prepare(
         "UPDATE accounts SET access_token=?, refresh_token=?, expires_at=? WHERE id=?"
     ).bind(data.access_token, newRefreshToken, newExpires, account.id).run();
 
@@ -164,7 +164,7 @@ async function sendEmailMS(env, account, to, subject, content) {
 
 // 3. 获取邮件列表
 async function syncEmailsMS(env, accountId, limit = 10) {
-    const account = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM accounts WHERE id=?").bind(accountId).first();
+    const account = await env.db.prepare("SELECT * FROM accounts WHERE id=?").bind(accountId).first();
     if (!account) throw new Error("Account not found");
 
     const token = await getAccessToken(env, account);
@@ -214,7 +214,7 @@ async function handleAccounts(req, env) {
     
     // 获取列表
     if (method === 'GET') {
-        const { results } = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM accounts ORDER BY id DESC").all();
+        const { results } = await env.db.prepare("SELECT * FROM accounts ORDER BY id DESC").all();
         // 如果需要脱敏，可以在这里处理 client_secret
         return jsonResp({ data: results });
     }
@@ -225,7 +225,7 @@ async function handleAccounts(req, env) {
         const items = Array.isArray(d) ? d : [d];
     
         // [新增] 获取现有邮箱列表用于去重
-        const { results } = await env.XYTJ_OUTLOOK.prepare("SELECT email FROM accounts").all();
+        const { results } = await env.db.prepare("SELECT email FROM accounts").all();
         const existingEmails = new Set(results.map(r => r.email));
         const skipped = [];
         const added = [];
@@ -238,7 +238,7 @@ async function handleAccounts(req, env) {
             }
     
             // 默认状态为 1 (启用)
-            await env.XYTJ_OUTLOOK.prepare(
+            await env.db.prepare(
                 "INSERT INTO accounts (name, email, client_id, client_secret, refresh_token, status) VALUES (?, ?, ?, ?, ?, 1)"
             ).bind(item.name, item.email||'', item.client_id, item.client_secret, item.refresh_token).run();
     
@@ -254,13 +254,13 @@ async function handleAccounts(req, env) {
     if (method === 'PUT') {
         const d = await req.json();
         if (d.status !== undefined && d.name === undefined) {
-            await env.XYTJ_OUTLOOK.prepare("UPDATE accounts SET status=? WHERE id=?").bind(d.status, d.id).run();
+            await env.db.prepare("UPDATE accounts SET status=? WHERE id=?").bind(d.status, d.id).run();
             return jsonResp({ ok: true });
         }
         // [新增] 检查邮箱是否被其他账号占用
-        const exist = await env.XYTJ_OUTLOOK.prepare("SELECT id FROM accounts WHERE email=? AND id!=?").bind(d.email, d.id).first();
+        const exist = await env.db.prepare("SELECT id FROM accounts WHERE email=? AND id!=?").bind(d.email, d.id).first();
         if (exist) return jsonResp({ ok: false, error: "该邮箱已存在于其他账号中" });
-        await env.XYTJ_OUTLOOK.prepare(
+        await env.db.prepare(
             "UPDATE accounts SET name=?, email=?, client_id=?, client_secret=?, refresh_token=? WHERE id=?"
         ).bind(d.name, d.email, d.client_id, d.client_secret, d.refresh_token, d.id).run();
         return jsonResp({ ok: true });
@@ -270,11 +270,11 @@ async function handleAccounts(req, env) {
     if (method === 'DELETE') {
         const id = url.searchParams.get('id');
         // 删除账号
-        await env.XYTJ_OUTLOOK.prepare("DELETE FROM accounts WHERE id=?").bind(id).run();
+        await env.db.prepare("DELETE FROM accounts WHERE id=?").bind(id).run();
         // 删除关联任务
-        await env.XYTJ_OUTLOOK.prepare("DELETE FROM send_tasks WHERE account_id=?").bind(id).run();
+        await env.db.prepare("DELETE FROM send_tasks WHERE account_id=?").bind(id).run();
         // 删除关联规则
-        await env.XYTJ_OUTLOOK.prepare("DELETE FROM access_rules WHERE name IN (SELECT name FROM accounts WHERE id=?)").bind(id).run();
+        await env.db.prepare("DELETE FROM access_rules WHERE name IN (SELECT name FROM accounts WHERE id=?)").bind(id).run();
         return jsonResp({ ok: true });
     }
 }
@@ -286,7 +286,7 @@ async function handleTasks(req, env) {
     
     // GET: 获取任务列表
     if (method === 'GET') {
-        const { results } = await env.XYTJ_OUTLOOK.prepare(`
+        const { results } = await env.db.prepare(`
             SELECT t.*, a.name as account_name 
             FROM send_tasks t 
             LEFT JOIN accounts a ON t.account_id = a.id 
@@ -303,7 +303,7 @@ async function handleTasks(req, env) {
         if (Array.isArray(d)) {
             for (const item of d) {
                 let nextRun = item.base_date ? new Date(item.base_date).getTime() : Date.now();
-                await env.XYTJ_OUTLOOK.prepare(
+                await env.db.prepare(
                     "INSERT INTO send_tasks (account_id, to_email, subject, content, delay_config, is_loop, next_run_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')"
                 ).bind(item.account_id, item.to_email, item.subject, item.content, item.delay_config, item.is_loop?1:0, nextRun).run();
             }
@@ -312,7 +312,7 @@ async function handleTasks(req, env) {
 
         // 模式: 立即发送 (无ID, 纯动作, 用于"立即发送"按钮)
         if (d.immediate) {
-            const acc = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM accounts WHERE id=?").bind(d.account_id).first();
+            const acc = await env.db.prepare("SELECT * FROM accounts WHERE id=?").bind(d.account_id).first();
             if (!acc) return jsonResp({ ok: false, error: "账号不存在" });
             
             const res = await sendEmailMS(env, acc, d.to_email, d.subject, d.content);
@@ -322,7 +322,7 @@ async function handleTasks(req, env) {
         // 模式: 加入队列 (添加单个新任务)
         let nextRun = d.base_date ? new Date(d.base_date).getTime() : Date.now();
         
-        await env.XYTJ_OUTLOOK.prepare(
+        await env.db.prepare(
             "INSERT INTO send_tasks (account_id, to_email, subject, content, delay_config, is_loop, next_run_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')"
         ).bind(d.account_id, d.to_email, d.subject, d.content, d.delay_config, d.is_loop?1:0, nextRun).run();
         
@@ -335,10 +335,10 @@ async function handleTasks(req, env) {
         
         // 场景 A: 列表中的"执行"按钮 (action: 'execute')
         if (d.action === 'execute') {
-            const task = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM send_tasks WHERE id=?").bind(d.id).first();
+            const task = await env.db.prepare("SELECT * FROM send_tasks WHERE id=?").bind(d.id).first();
             if (!task) return jsonResp({ ok: false, error: "任务不存在" });
 
-            const acc = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM accounts WHERE id=?").bind(task.account_id).first();
+            const acc = await env.db.prepare("SELECT * FROM accounts WHERE id=?").bind(task.account_id).first();
             if (!acc) return jsonResp({ ok: false, error: "账号无效" });
 
             // 调用发信逻辑
@@ -346,15 +346,15 @@ async function handleTasks(req, env) {
             
             if (res.success) {
                 if (task.is_loop) {
-                    await env.XYTJ_OUTLOOK.prepare("UPDATE send_tasks SET success_count=success_count+1 WHERE id=?").bind(d.id).run();
+                    await env.db.prepare("UPDATE send_tasks SET success_count=success_count+1 WHERE id=?").bind(d.id).run();
                 } else {
                     // 非循环任务，执行成功后标记为完成
-                    await env.XYTJ_OUTLOOK.prepare("UPDATE send_tasks SET status='success', success_count=success_count+1 WHERE id=?").bind(d.id).run();
+                    await env.db.prepare("UPDATE send_tasks SET status='success', success_count=success_count+1 WHERE id=?").bind(d.id).run();
                 }
                 return jsonResp({ ok: true });
             } else {
                 // 执行失败
-                await env.XYTJ_OUTLOOK.prepare("UPDATE send_tasks SET status='error', fail_count=fail_count+1 WHERE id=?").bind(d.id).run();
+                await env.db.prepare("UPDATE send_tasks SET status='error', fail_count=fail_count+1 WHERE id=?").bind(d.id).run();
                 return jsonResp({ ok: false, error: res.error });
             }
         }
@@ -371,7 +371,7 @@ async function handleTasks(req, env) {
             params = [d.account_id, d.to_email, d.subject, d.content, d.delay_config, d.is_loop?1:0, newRun, d.id];
         }
 
-        await env.XYTJ_OUTLOOK.prepare(sql).bind(...params).run();
+        await env.db.prepare(sql).bind(...params).run();
         return jsonResp({ ok: true });
     }
 
@@ -381,9 +381,9 @@ async function handleTasks(req, env) {
         const ids = url.searchParams.get('ids');
         if (ids) {
             const idList = ids.split(',');
-            for (const i of idList) await env.XYTJ_OUTLOOK.prepare("DELETE FROM send_tasks WHERE id=?").bind(i).run();
+            for (const i of idList) await env.db.prepare("DELETE FROM send_tasks WHERE id=?").bind(i).run();
         } else {
-            await env.XYTJ_OUTLOOK.prepare("DELETE FROM send_tasks WHERE id=?").bind(id).run();
+            await env.db.prepare("DELETE FROM send_tasks WHERE id=?").bind(id).run();
         }
         return jsonResp({ ok: true });
     }
@@ -411,13 +411,13 @@ async function handleRules(req, env) {
     const method = req.method;
 
     if (method === 'GET') {
-        const { results } = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM access_rules ORDER BY id DESC").all();
+        const { results } = await env.db.prepare("SELECT * FROM access_rules ORDER BY id DESC").all();
         return jsonResp(results);
     }
     if (method === 'PUT') {
         const d = await req.json();
         // 修改：增加 match_receiver 和 group_id
-        await env.XYTJ_OUTLOOK.prepare(
+        await env.db.prepare(
             "UPDATE access_rules SET name=?, alias=?, query_code=?, fetch_limit=?, valid_until=?, match_sender=?, match_receiver=?, match_body=?, group_id=? WHERE id=?"
         ).bind(d.name, d.alias, d.query_code, d.fetch_limit, d.valid_until, d.match_sender, d.match_receiver, d.match_body, d.group_id || null, d.id).run();
         return jsonResp({ success: true });
@@ -428,7 +428,7 @@ async function handleRules(req, env) {
         // 如果没有query_code则生成随机码 (修改为15位)
         const code = d.query_code || (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).slice(0, 15).toUpperCase();
         // 修改：增加 match_receiver 和 group_id
-        await env.XYTJ_OUTLOOK.prepare(
+        await env.db.prepare(
             "INSERT INTO access_rules (name, alias, query_code, fetch_limit, valid_until, match_sender, match_receiver, match_body, group_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         ).bind(d.name, d.alias, code, d.fetch_limit, d.valid_until, d.match_sender, d.match_receiver, d.match_body, d.group_id || null).run();
         return jsonResp({ success: true });
@@ -437,7 +437,7 @@ async function handleRules(req, env) {
     if (method === 'DELETE') {
         const ids = await req.json();
         if (Array.isArray(ids)) {
-            for(const id of ids) await env.XYTJ_OUTLOOK.prepare("DELETE FROM access_rules WHERE id=?").bind(id).run();
+            for(const id of ids) await env.db.prepare("DELETE FROM access_rules WHERE id=?").bind(id).run();
         }
         return jsonResp({ success: true });
     }
@@ -449,19 +449,19 @@ async function handleGroups(req, env) {
     const method = req.method;
 
     if (method === 'GET') {
-        const { results } = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM filter_groups ORDER BY id DESC").all();
+        const { results } = await env.db.prepare("SELECT * FROM filter_groups ORDER BY id DESC").all();
         return jsonResp({ data: results });
     }
     if (method === 'POST') {
         const d = await req.json();
-        await env.XYTJ_OUTLOOK.prepare(
+        await env.db.prepare(
             "INSERT INTO filter_groups (name, match_sender, match_receiver, match_body) VALUES (?, ?, ?, ?)"
         ).bind(d.name, d.match_sender, d.match_receiver, d.match_body).run();
         return jsonResp({ ok: true });
     }
     if (method === 'PUT') {
         const d = await req.json();
-        await env.XYTJ_OUTLOOK.prepare(
+        await env.db.prepare(
             "UPDATE filter_groups SET name=?, match_sender=?, match_receiver=?, match_body=? WHERE id=?"
         ).bind(d.name, d.match_sender, d.match_receiver, d.match_body, d.id).run();
         return jsonResp({ ok: true });
@@ -469,8 +469,8 @@ async function handleGroups(req, env) {
     if (method === 'DELETE') {
         const id = url.searchParams.get('id');
         // 删除组时，将使用了该组的规则重置为无组状态（group_id=NULL）
-        await env.XYTJ_OUTLOOK.prepare("UPDATE access_rules SET group_id=NULL WHERE group_id=?").bind(id).run();
-        await env.XYTJ_OUTLOOK.prepare("DELETE FROM filter_groups WHERE id=?").bind(id).run();
+        await env.db.prepare("UPDATE access_rules SET group_id=NULL WHERE group_id=?").bind(id).run();
+        await env.db.prepare("DELETE FROM filter_groups WHERE id=?").bind(id).run();
         return jsonResp({ ok: true });
     }
 }
@@ -491,14 +491,14 @@ async function handlePublicQuery(code, env) {
     const renderPage = (content) => `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>邮件查询</title><style>${cssStyle}</style></head><body>${content}</body></html>`;
 
     // 1. 查规则
-    const rule = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM access_rules WHERE query_code=?").bind(code).first();
+    const rule = await env.db.prepare("SELECT * FROM access_rules WHERE query_code=?").bind(code).first();
     
     // [修改] 使用 renderPage 返回带样式的错误提示
     if (!rule) return new Response(renderPage('<div class="msg">查询链接无效 (Link Invalid)</div>'), {status: 404, headers: {"Content-Type": "text/html;charset=UTF-8"}});
 
     // === [新增] 如果绑定了策略组，读取组配置覆盖 rule 的本地配置 ===
     if (rule.group_id) {
-        const group = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM filter_groups WHERE id=?").bind(rule.group_id).first();
+        const group = await env.db.prepare("SELECT * FROM filter_groups WHERE id=?").bind(rule.group_id).first();
         if (group) {
             rule.match_sender = group.match_sender;
             rule.match_receiver = group.match_receiver;
@@ -513,12 +513,12 @@ async function handlePublicQuery(code, env) {
 
     // 3. 查对应账号 (通过 name 匹配)
     // 【修改点：将 const 改为 let，并增加后续的模糊查找逻辑】
-    let acc = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM accounts WHERE name=?").bind(rule.name).first();
+    let acc = await env.db.prepare("SELECT * FROM accounts WHERE name=?").bind(rule.name).first();
 
     // [新增逻辑] 如果按名字没找到，尝试去邮箱地址(email字段)里模糊搜索
     if (!acc) {
         // 使用 LIKE 语法查找：只要 email 字段里包含规则名，就算匹配成功
-        acc = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM accounts WHERE email LIKE ?").bind(`%${rule.name}%`).first();
+        acc = await env.db.prepare("SELECT * FROM accounts WHERE email LIKE ?").bind(`%${rule.name}%`).first();
     }
 
     if (!acc) return new Response(renderPage('<div class="msg">未找到对应的账号配置 (Account Not Found)</div>'), {status: 404, headers: {"Content-Type": "text/html;charset=UTF-8"}});
@@ -593,24 +593,24 @@ async function handlePublicQuery(code, env) {
 async function processScheduledTasks(env) {
     const now = Date.now();
     // 查出所有待执行且时间已到的任务
-    const { results } = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM send_tasks WHERE status != 'success' AND next_run_at <= ?").bind(now).all();
+    const { results } = await env.db.prepare("SELECT * FROM send_tasks WHERE status != 'success' AND next_run_at <= ?").bind(now).all();
 
     for (const task of results) {
         try {
-            const acc = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM accounts WHERE id=?").bind(task.account_id).first();
+            const acc = await env.db.prepare("SELECT * FROM accounts WHERE id=?").bind(task.account_id).first();
             if (acc) {
                 const res = await sendEmailMS(env, acc, task.to_email, task.subject, task.content);
                 if (res.success) {
-                    await env.XYTJ_OUTLOOK.prepare("UPDATE send_tasks SET status='success', success_count=success_count+1 WHERE id=?").bind(task.id).run();
+                    await env.db.prepare("UPDATE send_tasks SET status='success', success_count=success_count+1 WHERE id=?").bind(task.id).run();
                 } else {
-                    await env.XYTJ_OUTLOOK.prepare("UPDATE send_tasks SET status='error', fail_count=fail_count+1 WHERE id=?").bind(task.id).run();
+                    await env.db.prepare("UPDATE send_tasks SET status='error', fail_count=fail_count+1 WHERE id=?").bind(task.id).run();
                     console.error(`Task ${task.id} failed: ${res.error}`);
                     continue; 
                 }
             }
         } catch(e) {
             console.error(`Task ${task.id} error: ${e.message}`);
-            await env.XYTJ_OUTLOOK.prepare("UPDATE send_tasks SET status='error', fail_count=fail_count+1 WHERE id=?").bind(task.id).run();
+            await env.db.prepare("UPDATE send_tasks SET status='error', fail_count=fail_count+1 WHERE id=?").bind(task.id).run();
             continue;
         }
 
@@ -635,7 +635,7 @@ async function processScheduledTasks(env) {
 
             const nextRun = Date.now() + addMs;
             // 重置状态为 pending 并更新下次运行时间
-            await env.XYTJ_OUTLOOK.prepare("UPDATE send_tasks SET next_run_at=?, status='pending' WHERE id=?").bind(nextRun, task.id).run();
+            await env.db.prepare("UPDATE send_tasks SET next_run_at=?, status='pending' WHERE id=?").bind(nextRun, task.id).run();
         } else {
             // 非循环任务，执行成功后不需要额外操作，状态已更新为 success
         }
@@ -646,7 +646,7 @@ async function processScheduledTasks(env) {
 // 【新增】保活专用函数
 // ============================================================
 async function keepTokensAlive(env) {
-    const { results } = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM accounts WHERE status = 1").all();
+    const { results } = await env.db.prepare("SELECT * FROM accounts WHERE status = 1").all();
     for (const account of results) {
         try {
             // 只要调用 getAccessToken，内部就会检查过期并自动刷新
