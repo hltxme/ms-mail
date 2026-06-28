@@ -1,0 +1,18 @@
+name = "ms-mail"
+main = "_worker.js" # 你的主代码文件路径，可以把原_worker.js放进src目录
+compatibility_date = "2024-03-20"
+
+# 开启静态资源托管，将 public 目录绑定到 env.ASSETS
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# 触发器配置：每天5点保活，以及每分钟(或按需)执行发信任务
+[triggers]
+crons = ["0 5 * * *", "* * * * *"] 
+
+# D1 数据库绑定
+#[[d1_databases]]
+#binding = "XYTJ_OUTLOOK"
+#database_name = "你的数据库名"
+#database_id = "你的数据库ID"
