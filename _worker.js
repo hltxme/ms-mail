@@ -62,6 +62,16 @@ export default {
       
       return new Response("MS Backend Active", { headers: corsHeaders() });
     },
+    // 定时任务触发器 (支持区分发信和保活)
+    async scheduled(event, env, ctx) {
+      const KEEP_ALIVE_CRON = "0 5 * * *"; // 必须与 wrangler.toml 中配置的保活时间一致
+      
+      if (event.cron === KEEP_ALIVE_CRON) {
+          ctx.waitUntil(keepTokensAlive(env));    // 命中保活时间，只做保活
+      } else {
+          ctx.waitUntil(processScheduledTasks(env)); // 其他时间，做发信任务
+      }
+    },
 };
 
 // ============================================================
@@ -628,6 +638,21 @@ async function processScheduledTasks(env) {
             await env.XYTJ_OUTLOOK.prepare("UPDATE send_tasks SET next_run_at=?, status='pending' WHERE id=?").bind(nextRun, task.id).run();
         } else {
             // 非循环任务，执行成功后不需要额外操作，状态已更新为 success
+        }
+    }
+}
+
+// ============================================================
+// 【新增】保活专用函数
+// ============================================================
+async function keepTokensAlive(env) {
+    const { results } = await env.XYTJ_OUTLOOK.prepare("SELECT * FROM accounts WHERE status = 1").all();
+    for (const account of results) {
+        try {
+            // 只要调用 getAccessToken，内部就会检查过期并自动刷新
+            await getAccessToken(env, account);
+        } catch (e) {
+            console.error(`账号 [${account.name}] 保活失败: ${e.message}`);
         }
     }
 }
