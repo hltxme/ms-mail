@@ -9,7 +9,7 @@ binding = "ASSETS"
 
 # 触发器配置：每天5点保活，以及每分钟(或按需)执行发信任务
 [triggers]
-crons = ["0 5 * * *", "* * * * *"] 
+crons = ["0 5 * * *"] 
 
 # D1 数据库绑定
 #[[d1_databases]]
