@@ -89,7 +89,7 @@ async function getAccessToken(env, account) {
     }
     
     // Token 过期或不存在，执行刷新
-    console.log(`Refreshing token for account: ${account.name}`);
+    console.log(`Refreshing token for account: ${account.email}`);
     
     if (!account.refresh_token || !account.client_id || !account.client_secret) {
         throw new Error("缺少刷新凭据 (Client ID/Secret/Refresh Token)");
@@ -241,8 +241,8 @@ async function handleAccounts(req, env) {
     
             // 默认状态为 1 (启用)
             await env.db.prepare(
-                "INSERT INTO accounts (name, email, client_id, client_secret, refresh_token, status) VALUES (?, ?, ?, ?, ?, 1)"
-            ).bind(item.name, item.email||'', item.client_id, item.client_secret, item.refresh_token).run();
+                "INSERT INTO accounts (email, password, client_id, client_secret, refresh_token, status) VALUES (?, ?, ?, ?, ?, 1)"
+            ).bind(item.email||'', item.password||'', item.client_id, item.client_secret, item.refresh_token).run();
     
             // [新增] 更新本地 Set 防止同批次重复
             if (item.email) existingEmails.add(item.email);
@@ -255,7 +255,7 @@ async function handleAccounts(req, env) {
     // 更新
     if (method === 'PUT') {
         const d = await req.json();
-        if (d.status !== undefined && d.name === undefined) {
+        if (d.status !== undefined && d.email === undefined) {
             await env.db.prepare("UPDATE accounts SET status=? WHERE id=?").bind(d.status, d.id).run();
             return jsonResp({ ok: true });
         }
@@ -263,20 +263,20 @@ async function handleAccounts(req, env) {
         const exist = await env.db.prepare("SELECT id FROM accounts WHERE email=? AND id!=?").bind(d.email, d.id).first();
         if (exist) return jsonResp({ ok: false, error: "该邮箱已存在于其他账号中" });
         await env.db.prepare(
-            "UPDATE accounts SET name=?, email=?, client_id=?, client_secret=?, refresh_token=? WHERE id=?"
-        ).bind(d.name, d.email, d.client_id, d.client_secret, d.refresh_token, d.id).run();
+            "UPDATE accounts SET email=?, password=?, client_id=?, client_secret=?, refresh_token=? WHERE id=?"
+        ).bind(d.email, d.password, d.client_id, d.client_secret, d.refresh_token, d.id).run();
         return jsonResp({ ok: true });
     }
 
     // 删除
     if (method === 'DELETE') {
         const id = url.searchParams.get('id');
-        // 删除账号
-        await env.db.prepare("DELETE FROM accounts WHERE id=?").bind(id).run();
+        // 先删除关联规则（因为现在 access_rules 的 name 存的是邮箱，所以去 accounts 里查 email）
+        await env.db.prepare("DELETE FROM access_rules WHERE name IN (SELECT email FROM accounts WHERE id=?)").bind(id).run();
         // 删除关联任务
         await env.db.prepare("DELETE FROM send_tasks WHERE account_id=?").bind(id).run();
-        // 删除关联规则
-        await env.db.prepare("DELETE FROM access_rules WHERE name IN (SELECT name FROM accounts WHERE id=?)").bind(id).run();
+        // 最后删除账号本身
+        await env.db.prepare("DELETE FROM accounts WHERE id=?").bind(id).run();
         return jsonResp({ ok: true });
     }
 }
@@ -289,9 +289,9 @@ async function handleTasks(req, env) {
     // GET: 获取任务列表
     if (method === 'GET') {
         const { results } = await env.db.prepare(`
-            SELECT t.*, a.name as account_name 
+            SELECT t.*, a.email as account_name 
             FROM send_tasks t 
-            LEFT JOIN accounts a ON t.account_id = a.id 
+            LEFT JOIN accounts a ON t.account_id = a.id
             ORDER BY t.next_run_at ASC`
         ).all();
         return jsonResp({ data: results });
@@ -513,13 +513,13 @@ async function handlePublicQuery(code, env) {
         return new Response(renderPage('<div class="msg">链接已过期 (Link Expired)</div>'), {status: 403, headers: {"Content-Type": "text/html;charset=UTF-8"}});
     }
 
-    // 3. 查对应账号 (通过 name 匹配)
-    // 【修改点：将 const 改为 let，并增加后续的模糊查找逻辑】
-    let acc = await env.db.prepare("SELECT * FROM accounts WHERE name=?").bind(rule.name).first();
+    // 3. 查对应账号 (由于名称已删除，改用邮箱匹配)
+    // 这里的 rule.name 数据库里存的实际已经是邮箱地址了
+    let acc = await env.db.prepare("SELECT * FROM accounts WHERE email=?").bind(rule.name).first();
 
-    // [新增逻辑] 如果按名字没找到，尝试去邮箱地址(email字段)里模糊搜索
+    // [新增逻辑] 如果精准没找到，尝试模糊搜索
     if (!acc) {
-        // 使用 LIKE 语法查找：只要 email 字段里包含规则名，就算匹配成功
+        // 使用 LIKE 语法查找：只要 email 字段里包含即可
         acc = await env.db.prepare("SELECT * FROM accounts WHERE email LIKE ?").bind(`%${rule.name}%`).first();
     }
 
@@ -654,7 +654,7 @@ async function keepTokensAlive(env) {
             // 只要调用 getAccessToken，内部就会检查过期并自动刷新
             await getAccessToken(env, account);
         } catch (e) {
-            console.error(`账号 [${account.name}] 保活失败: ${e.message}`);
+            console.error(`账号 [${account.email}] 保活失败: ${e.message}`);
         }
     }
 }
