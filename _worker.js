@@ -64,13 +64,15 @@ export default {
     },
     // 定时任务触发器 (支持区分发信和保活)
     async scheduled(event, env, ctx) {
-      const KEEP_ALIVE_CRON = "0 5 * * *"; // 必须与 wrangler.toml 中配置的保活时间一致
+      // Cloudflare Cron 默认使用 UTC 时间 (0 5 * * * 对应 UTC 5:00)
+      const now = new Date();
+      const isKeepAliveTime = now.getUTCHours() === 5 && now.getUTCMinutes() === 0;
       
-      if (event.cron === KEEP_ALIVE_CRON) {
-          ctx.waitUntil(keepTokensAlive(env));    // 命中保活时间，只做保活
-      } else {
-          ctx.waitUntil(processScheduledTasks(env)); // 其他时间，做发信任务
+      if (isKeepAliveTime) {
+          ctx.waitUntil(keepTokensAlive(env));    // 命中UTC 5点，执行保活
       }
+      // 无论是否保活，每分钟都应该检查并执行正常的发信队列
+      ctx.waitUntil(processScheduledTasks(env)); 
     },
 };
 
