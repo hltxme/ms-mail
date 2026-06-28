@@ -132,7 +132,7 @@ function loadAccounts() {
         const dataList = $("#account-list-options");
         dataList.empty();
         cachedAccounts.forEach(acc => {
-            dataList.append(`<option value="${escapeHtml(acc.name)}">${acc.email||''}</option>`);
+            dataList.append(`<option value="${escapeHtml(acc.email)}">${acc.email||''}</option>`);
         });
     });
 }
@@ -146,23 +146,22 @@ function renderAccountsTable() {
     tbody.empty();
 
     if(list.length === 0) {
-        tbody.html('<tr><td colspan="6" class="text-center p-4 text-muted">暂无账号或无匹配项</td></tr>');
+        tbody.html('<tr><td colspan="9" class="text-center p-4 text-muted">暂无账号或无匹配项</td></tr>');
     } else {
         list.forEach(acc => {
-            let configStr = '-';
-            if (acc.client_id) {
-                const secretMask = acc.client_secret ? '******' : '';
-                const tokenMask = acc.refresh_token ? acc.refresh_token.substring(0, 8) + '...' : '';
-                configStr = `${acc.client_id}, ${secretMask}, ${tokenMask}`;
-            }
+            // 计算令牌剩余天数 (expires_at 是毫秒时间戳)
+            let remainDays = acc.expires_at ? Math.max(0, Math.ceil((acc.expires_at - Date.now()) / 86400000)) : '-';
             const isChecked = (acc.status === undefined || acc.status == 1) ? 'checked' : '';
             const statusBadge = `<div class="form-check form-switch"><input class="form-check-input" type="checkbox" ${isChecked} onchange="updateAccountStatus(${acc.id}, this.checked)"></div>`;
             tbody.append(`
                 <tr>
                     <td><input type="checkbox" class="acc-check" value="${acc.id}"></td>
-                    <td class="fw-bold text-primary cursor-pointer" onclick="openEditAccount(${acc.id})">${escapeHtml(acc.name)}</td>
-                    <td style="cursor:pointer; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" onclick="copyAccountInfo(${acc.id}, 'email')" title="点击复制: ${escapeHtml(acc.email||'-')}">${escapeHtml(acc.email||'-')}</td>
-                    <td class="api-config-cell" style="cursor:pointer" onclick="copyAccountInfo(${acc.id}, 'creds')" title="点击复制凭据">${configStr}</td>
+                    <td class="fw-bold text-primary cursor-pointer" onclick="openEditAccount(${acc.id})">${escapeHtml(acc.email||'-')}</td>
+                    <td>${escapeHtml(acc.password||'-')}</td>
+                    <td class="text-truncate" style="max-width: 120px;" title="${escapeHtml(acc.client_id||'')}">${escapeHtml(acc.client_id||'-')}</td>
+                    <td class="text-truncate" style="cursor:pointer; max-width: 100px;" onclick="copyStr('${acc.client_secret||''}', '已复制Secret')" title="点击复制">${acc.client_secret ? '******' : '-'}</td>
+                    <td class="text-truncate" style="cursor:pointer; max-width: 100px;" onclick="copyStr('${acc.refresh_token||''}', '已复制Token')" title="点击复制">${acc.refresh_token ? acc.refresh_token.substring(0, 8) + '...' : '-'}</td>
+                    <td>${remainDays}</td>
                     <td>${statusBadge}</td>
                     <td>
                         <button class="btn btn-sm btn-light text-primary" onclick="openEditAccount(${acc.id})"><i class="fas fa-edit"></i></button>
@@ -179,7 +178,7 @@ function renderAccountsTable() {
 function filterAccounts(val) {
     const k = val.toLowerCase();
     pageState.acc.filtered = pageState.acc.data.filter(item => {
-        const text = (item.name + " " + (item.email||"")).toLowerCase();
+        const text = (item.email||"").toLowerCase();
         return text.includes(k);
     });
     pageState.acc.page = 1;
@@ -188,8 +187,8 @@ function filterAccounts(val) {
 
 function openAddModal() {
     $("#acc-id").val("");
-    $("#acc-name").val("");
     $("#acc-email").val("");
+    $("#acc-password").val("");
     $("#acc-api-config").val("");
     new bootstrap.Modal(document.getElementById('addAccountModal')).show();
 }
@@ -199,8 +198,8 @@ function openEditAccount(id) {
     if(!acc) return;
     
     $("#acc-id").val(acc.id);
-    $("#acc-name").val(acc.name);
     $("#acc-email").val(acc.email);
+    $("#acc-password").val(acc.password || "");
     
     const config = [acc.client_id, acc.client_secret, acc.refresh_token].filter(x=>x).join(', ');
     $("#acc-api-config").val(config);
@@ -214,16 +213,16 @@ function saveAccount() {
     
     const data = {
         id: $("#acc-id").val() || undefined,
-        name: $("#acc-name").val(),
         email: $("#acc-email").val(),
+        password: $("#acc-password").val(),
         client_id: parts[0] || "",
         client_secret: parts[1] || "",
         refresh_token: parts[2] || ""
     };
 
-    if(!data.name) return showToast("名称不能为空");
+    if(!data.email) return showToast("邮箱不能为空");
 
-    fetch(`${API_BASE}/accounts`, { 
+    fetch(`${API_BASE}/accounts`, {
         method: data.id ? 'PUT' : 'POST', 
         headers: getHeaders(), 
         body: JSON.stringify(data) 
@@ -287,13 +286,12 @@ function processAccountImport(text) {
         const lines = text.split('\n').filter(l => l.trim());
         const json = lines.map(line => {
             const p = line.split('\t').map(s => s.trim());
-            const creds = (p[2] || "").split(/[,，|]/).map(s => s.trim());
             return {
-                name: p[0],
-                email: p[1] || "",
-                client_id: creds[0] || "",
-                client_secret: creds[1] || "",
-                refresh_token: creds[2] || ""
+                email: p[0] || "",
+                password: p[1] || "",
+                client_id: p[2] || "",
+                client_secret: p[3] || "",
+                refresh_token: p[4] || ""
             };
         });
         
@@ -315,8 +313,7 @@ function processAccountImport(text) {
 
 function exportAccounts() {
     const content = cachedAccounts.map(acc => {
-        const creds = `${acc.client_id||''},${acc.client_secret||''},${acc.refresh_token||''}`;
-        return `${acc.name}\t${acc.email||''}\t${creds}`;
+        return `${acc.email||''}\t${acc.password||''}\t${acc.client_id||''}\t${acc.client_secret||''}\t${acc.refresh_token||''}`;
     }).join('\n');
     downloadFile(content, "accounts_backup.txt");
 }
@@ -348,7 +345,7 @@ function renderRulesTable() {
         list.forEach(r => {
             const link = `${host}/${r.query_code}`;
             const isExpired = r.valid_until && Date.now() > r.valid_until;
-            const acc = cachedAccounts.find(a => a.name === r.name);
+            const acc = cachedAccounts.find(a => a.email === r.name);
             const hiddenEmail = acc ? escapeHtml(acc.email) : "";
 
             let validStr = '<span class="text-success">永久</span>';
@@ -379,7 +376,7 @@ function renderRulesTable() {
             tbody.append(`
                 <tr data-email="${hiddenEmail}">
                     <td><input type="checkbox" class="rule-check" value="${r.id}"></td>
-                    <td class="text-primary" style="cursor:pointer" onclick="copyStr('${escapeHtml(r.name)}', '已复制账号名！')" title="点击复制">${escapeHtml(r.name)}</td>
+                    <td class="text-primary" style="cursor:pointer" onclick="copyStr('${escapeHtml(r.name)}', '已复制邮箱！')" title="点击复制">${escapeHtml(r.name)}</td>
                     <td class="text-primary" style="cursor:pointer" onclick="copyStr('${escapeHtml(r.alias)}', '已复制别名！')" title="点击复制">${escapeHtml(r.alias)}</td>
                     <td>
                         <div class="input-group input-group-sm" style="width:200px">
@@ -407,7 +404,7 @@ function filterRules(val) {
     const k = val.toLowerCase();
     pageState.rule.filtered = pageState.rule.data.filter(r => {
         // 1. 基础信息：账号名、别名、查询码、邮箱
-        const acc = cachedAccounts.find(a => a.name === r.name);
+        const acc = cachedAccounts.find(a => a.email === r.name);
         const email = acc ? acc.email : "";
         
         // 2. 策略组名称
@@ -496,7 +493,7 @@ function saveRule() {
         group_id: $("#rule-group-select").val() || null 
     };
 
-    if(!data.name) return showToast("必须填写绑定账号名");
+    if(!data.name) return showToast("必须填写绑定邮箱地址");
 
     const id = $("#rule-id").val();
     if(id) data.id = id;
@@ -588,7 +585,7 @@ function toLocalISOString(date) {
 
 function getSelectedAccountId() {
     const name = $("#send-from").val();
-    const acc = cachedAccounts.find(a => a.name == name);
+    const acc = cachedAccounts.find(a => a.email == name);
     return acc ? acc.id : null;
 }
 
@@ -840,9 +837,9 @@ function processTaskImport(text) {
         const lines = text.split('\n').filter(l => l.trim());
         const json = lines.map(line => {
             const p = line.split('\t');
-            // 格式: 账号名, 收件人, 主题, 内容, 延迟, 循环(0/1), 时间
+            // 格式: 发件邮箱, 收件人, 主题, 内容, 延迟, 循环(0/1), 时间
             const accName = (p[0]||"").trim();
-            const acc = cachedAccounts.find(a => a.name === accName);
+            const acc = cachedAccounts.find(a => a.email === accName);
             
             return {
                 account_id: acc ? acc.id : null, 
@@ -886,12 +883,11 @@ function renderInboxList(list) {
     list.forEach(acc => {
         if (acc.status != null && acc.status == 0) return;
         el.append(`
-            <a href="#" class="list-group-item list-group-item-action" onclick="viewInbox(${acc.id}, '${escapeHtml(acc.name)}', this)">
+            <a href="#" class="list-group-item list-group-item-action" onclick="viewInbox(${acc.id}, '${escapeHtml(acc.email)}', this)">
                 <div class="d-flex w-100 justify-content-between">
-                    <h6 class="mb-1 text-truncate">${escapeHtml(acc.name)}</h6>
+                    <h6 class="mb-1 text-truncate">${escapeHtml(acc.email)}</h6>
                     <small><i class="fas fa-chevron-right"></i></small>
                 </div>
-                <small class="text-muted d-block text-truncate" title="${escapeHtml(acc.email||'')}">${escapeHtml(acc.email||'')}</small>
             </a>
         `);
     });
