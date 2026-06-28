@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS access_rules (
 
 CREATE TABLE IF NOT EXISTS accounts (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    name          TEXT NOT NULL,
     email         TEXT,
+    password      TEXT,
     client_id     TEXT,
     client_secret TEXT,
     refresh_token TEXT,
