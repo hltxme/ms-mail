@@ -40,7 +40,7 @@ export default {
       // 4. 登录验证接口
       if (path === '/api/login') {
           const authHeader = request.headers.get("Authorization");
-          if (checkAuth(authHeader, env)) {
+          if (await checkAuth(authHeader, env)) {
              return jsonResp({ success: true });
           }
           return jsonResp({ error: "Unauthorized" }, 401);
@@ -49,7 +49,7 @@ export default {
       // 5. 全局身份验证 (Basic Auth)
       // 所有 /api/ 接口都需要鉴权
       const authHeader = request.headers.get("Authorization");
-      if (!checkAuth(authHeader, env)) {
+      if (!(await checkAuth(authHeader, env))) {
         return jsonResp({ error: "Unauthorized" }, 401);
       }
    
@@ -59,7 +59,7 @@ export default {
       if (path.startsWith('/api/tasks')) return handleTasks(request, env);
       if (path.startsWith('/api/emails')) return handleEmails(request, env);
       if (path.startsWith('/api/rules')) return handleRules(request, env);
-      
+      if (path.startsWith('/api/settings')) return handleSettings(request, env);
       return new Response("MS Backend Active", { headers: corsHeaders() });
     },
     // 定时任务触发器 (支持区分发信和保活)
@@ -96,11 +96,12 @@ async function getAccessToken(env, account) {
         throw new Error("缺少刷新凭据 (必须提供 Client ID 和 Refresh Token)");
     }
 
-    // 修改：构造基础参数（去除了硬编码的 client_secret）
+    // 修改：构造基础参数（新增 scope 强制指定 Graph API，确保微软返回带有小数点的 JWT 令牌）
     const params = new URLSearchParams({
         client_id: account.client_id,
         refresh_token: account.refresh_token,
-        grant_type: "refresh_token"
+        grant_type: "refresh_token",
+        scope: "https://graph.microsoft.com/.default"
     });
     
     // 新增：如果用户填了 Client Secret，才附加该参数；没填则走公开客户端模式
@@ -677,14 +678,46 @@ function corsHeaders() {
     };
 }
 
-function checkAuth(header, env) {
+// 系统设置处理器
+async function handleSettings(req, env) {
+    const method = req.method;
+    if (method === 'GET') {
+        const row = await env.db.prepare("SELECT value FROM system_settings WHERE key='admin_username'").first();
+        return jsonResp({ username: row ? row.value : 'admin' });
+    }
+    if (method === 'PUT') {
+        const d = await req.json();
+        if (!d.username || !d.password) return jsonResp({ ok: false, error: "用户名和密码不能为空" });
+        
+        // 简单防呆：不支持中文
+        if (/[^\x00-\xff]/.test(d.username) || /[^\x00-\xff]/.test(d.password)) {
+            return jsonResp({ ok: false, error: "用户名或密码不支持中文" });
+        }
+
+        await env.db.prepare("UPDATE system_settings SET value=? WHERE key='admin_username'").bind(d.username).run();
+        await env.db.prepare("UPDATE system_settings SET value=? WHERE key='admin_password'").bind(d.password).run();
+        
+        // 生成新的 Basic Auth Token 供前端同步更新
+        const newToken = "Basic " + btoa(d.username + ":" + d.password);
+        return jsonResp({ ok: true, newToken: newToken });
+    }
+    return jsonResp({ error: "Method not allowed" }, 405);
+}
+
+// 身份验证处理器 (异步读取D1数据库)
+async function checkAuth(header, env) {
     if (!header) return false;
     try {
         const base64 = header.split(" ")[1];
         if (!base64) return false;
         const [u, p] = atob(base64).split(":");
-        const validUser = env.ADMIN_USERNAME || "";
-        const validPass = env.ADMIN_PASSWORD || "";
+        
+        // 从 D1 数据库中动态读取当前的用户名和密码
+        const usernameRow = await env.db.prepare("SELECT value FROM system_settings WHERE key='admin_username'").first();
+        const passwordRow = await env.db.prepare("SELECT value FROM system_settings WHERE key='admin_password'").first();
+        
+        const validUser = usernameRow ? usernameRow.value : "admin";
+        const validPass = passwordRow ? passwordRow.value : "admin123";
         return u === validUser && p === validPass;
     } catch(e) { return false; }
 }
