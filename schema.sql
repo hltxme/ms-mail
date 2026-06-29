@@ -47,3 +47,10 @@ CREATE TABLE IF NOT EXISTS send_tasks (
     success_count  INTEGER DEFAULT 0,
     fail_count     INTEGER DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS system_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_username', 'admin');
+INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', '123456');
