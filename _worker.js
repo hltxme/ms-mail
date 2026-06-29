@@ -96,11 +96,12 @@ async function getAccessToken(env, account, forceRefresh = false) {
         throw new Error("缺少刷新凭据 (必须提供 Client ID 和 Refresh Token)");
     }
 
-    // [修改] 去掉 scope 参数，让系统完全继承刷新令牌原有的收发邮件权限
+    // [修改] 明确列出具体的 Graph 权限，强制微软返回合法的 JWT 令牌，且绝不丢失收发权限！
     const params = new URLSearchParams({
         client_id: account.client_id,
         refresh_token: account.refresh_token,
-        grant_type: "refresh_token"
+        grant_type: "refresh_token",
+        scope: "offline_access User.Read Mail.ReadWrite Mail.Send"
     });
     
     // 新增：如果用户填了 Client Secret，才附加该参数；没填则走公开客户端模式
