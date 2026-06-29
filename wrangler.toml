@@ -12,7 +12,7 @@ binding = "ASSETS"
 crons = ["0 5 * * *"] 
 
 # D1 数据库绑定
-#[[d1_databases]]
-#binding = "XYTJ_OUTLOOK"
-#database_name = "你的数据库名"
-#database_id = "你的数据库ID"
+[[d1_databases]]
+binding = "db"
+database_name = "ms-mail"
+database_id = "17298684-cdf4-47af-942b-dcde8c61c479"
