@@ -81,10 +81,10 @@ export default {
 // ============================================================
 
 // 1. 获取 Access Token (含自动刷新逻辑)
-// [修改] 增加 forceRefresh 参数。如果遇到 401，强行跳过缓存重新向微软要 Token
-async function getAccessToken(env, account, forceRefresh = false) {
+async function getAccessToken(env, account) {
     // 检查现有 Token 是否有效 (预留 5 分钟缓冲期)
-    if (!forceRefresh && account.access_token && account.expires_at && account.expires_at > Date.now() + 300000) {
+    // 数据库存的是 expires_at (毫秒时间戳)
+    if (account.access_token && account.expires_at && account.expires_at > Date.now() + 300000) {
         return account.access_token;
     }
     
@@ -96,12 +96,12 @@ async function getAccessToken(env, account, forceRefresh = false) {
         throw new Error("缺少刷新凭据 (必须提供 Client ID 和 Refresh Token)");
     }
 
-    // [修改] 明确列出具体的 Graph 权限，强制微软返回合法的 JWT 令牌，且绝不丢失收发权限！
+    // 修改：构造基础参数（新增 scope 强制指定 Graph API，确保微软返回带有小数点的 JWT 令牌）
     const params = new URLSearchParams({
         client_id: account.client_id,
         refresh_token: account.refresh_token,
         grant_type: "refresh_token",
-        scope: "offline_access User.Read Mail.ReadWrite Mail.Send"
+        scope: "https://graph.microsoft.com/.default"
     });
     
     // 新增：如果用户填了 Client Secret，才附加该参数；没填则走公开客户端模式
@@ -142,10 +142,9 @@ async function getAccessToken(env, account, forceRefresh = false) {
 }
 
 // 2. 发送邮件
-// [修改] 接收 forceRefresh 参数并传递
-async function sendEmailMS(env, account, to, subject, content, forceRefresh = false) {
+async function sendEmailMS(env, account, to, subject, content) {
     try {
-        const token = await getAccessToken(env, account, forceRefresh);
+        const token = await getAccessToken(env, account);
         
         const payload = {
             message: {
@@ -170,11 +169,6 @@ async function sendEmailMS(env, account, to, subject, content, forceRefresh = fa
         });
 
         if (!resp.ok) {
-            // [新增] 核心防御：遇到 401 授权失败，说明旧 Token 废了，强制刷新并重试 1 次
-            if (!forceRefresh && resp.status === 401) {
-                console.log(`发件遇到401，强制刷新Token重试: ${account.email}`);
-                return await sendEmailMS(env, account, to, subject, content, true);
-            }
             const errText = await resp.text();
             throw new Error(`Graph API Error: ${resp.status} - ${errText}`);
         }
@@ -185,12 +179,11 @@ async function sendEmailMS(env, account, to, subject, content, forceRefresh = fa
 }
 
 // 3. 获取邮件列表
-// [修改] 接收 forceRefresh 参数并传递
-async function syncEmailsMS(env, accountId, limit = 10, forceRefresh = false) {
+async function syncEmailsMS(env, accountId, limit = 10) {
     const account = await env.db.prepare("SELECT * FROM accounts WHERE id=?").bind(accountId).first();
     if (!account) throw new Error("Account not found");
 
-    const token = await getAccessToken(env, account, forceRefresh);
+    const token = await getAccessToken(env, account);
     
     // 查询参数: $top=限制数量, $select=只取需要的字段, $orderby=时间倒序
     // 修改：增加 toRecipients 以便支持收件人匹配
@@ -201,12 +194,6 @@ async function syncEmailsMS(env, accountId, limit = 10, forceRefresh = false) {
         fetch(urlInbox, { headers: { "Authorization": `Bearer ${token}` } }),
         fetch(urlJunk, { headers: { "Authorization": `Bearer ${token}` } })
     ]);
-
-    // [新增] 核心防御：如果拿到 401 未授权，直接丢弃无效的老 Token，强制刷新并重试 1 次
-    if (!forceRefresh && (r1.status === 401 || r2.status === 401)) {
-        console.log(`收件遇到401，强制刷新Token重试: ${account.email}`);
-        return await syncEmailsMS(env, accountId, limit, true);
-    }
 
     const t1 = await r1.text();
     const t2 = await r2.text();
