@@ -91,16 +91,22 @@ async function getAccessToken(env, account) {
     // Token 过期或不存在，执行刷新
     console.log(`Refreshing token for account: ${account.email}`);
     
-    if (!account.refresh_token || !account.client_id || !account.client_secret) {
-        throw new Error("缺少刷新凭据 (Client ID/Secret/Refresh Token)");
+    // 修改：放宽校验，仅要求提供 Client ID 和 Refresh Token 即可
+    if (!account.refresh_token || !account.client_id) {
+        throw new Error("缺少刷新凭据 (必须提供 Client ID 和 Refresh Token)");
     }
 
+    // 修改：构造基础参数（去除了硬编码的 client_secret）
     const params = new URLSearchParams({
         client_id: account.client_id,
-        client_secret: account.client_secret,
         refresh_token: account.refresh_token,
         grant_type: "refresh_token"
     });
+    
+    // 新增：如果用户填了 Client Secret，才附加该参数；没填则走公开客户端模式
+    if (account.client_secret) {
+        params.append("client_secret", account.client_secret);
+    }
 
     const resp = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
         method: "POST",
