@@ -115,7 +115,14 @@ async function getAccessToken(env, account) {
         body: params.toString()
     });
     
-    const data = await resp.json();
+    const text = await resp.text();
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        throw new Error(`微软Token接口异常 (HTTP ${resp.status}): ${text || '无返回内容'}`);
+    }
+
     if (data.error) {
         throw new Error(`Token刷新失败: ${data.error_description || JSON.stringify(data)}`);
     }
@@ -188,8 +195,13 @@ async function syncEmailsMS(env, accountId, limit = 10) {
         fetch(urlJunk, { headers: { "Authorization": `Bearer ${token}` } })
     ]);
 
-    const d1 = await r1.json();
-    const d2 = await r2.json();
+    const t1 = await r1.text();
+    const t2 = await r2.text();
+    
+    let d1, d2;
+    try { d1 = JSON.parse(t1); } catch(e) { throw new Error(`收件箱API异常 (HTTP ${r1.status}): ${t1 || '无返回内容'}`); }
+    try { d2 = JSON.parse(t2); } catch(e) { throw new Error(`垃圾箱API异常 (HTTP ${r2.status}): ${t2 || '无返回内容'}`); }
+    
     if (d1.error || d2.error) throw new Error(JSON.stringify(d1.error || d2.error));
 
     // 合并并按时间倒序
