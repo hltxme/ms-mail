@@ -30,6 +30,7 @@
                 <a href="javascript:;" class="list-group-item list-group-item-action" onclick="showSection('section-rules')"><i class="fas fa-link me-2"></i> 收件规则</a>
                 <a href="javascript:;" class="list-group-item list-group-item-action" onclick="showSection('section-send')"><i class="fas fa-paper-plane me-2"></i> 发件任务</a>
                 <a href="javascript:;" class="list-group-item list-group-item-action" onclick="showSection('section-receive')"><i class="fas fa-inbox me-2"></i> 收件箱</a>
+                <a href="javascript:;" class="list-group-item list-group-item-action" onclick="showSection('section-settings')"><i class="fas fa-cogs me-2"></i> 系统设置</a>
                 <a href="javascript:;" class="list-group-item list-group-item-action" onclick="doLogout()"><i class="fas fa-sign-out-alt me-2"></i> 退出登录</a>
             </div>
         </div>
@@ -293,6 +294,23 @@
                                 <p>请在左侧选择邮箱查看邮件</p>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+            <div id="section-settings" class="content-section">
+                <h3 class="mb-4">系统设置</h3>
+                <div class="card shadow-sm" style="max-width: 500px;">
+                    <div class="card-header bg-white fw-bold">修改管理员登录凭证</div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">新登录用户名</label>
+                            <input type="text" id="sys-username" class="form-control" placeholder="用户名 (不支持中文)">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">新登录密码</label>
+                            <input type="password" id="sys-password" class="form-control" placeholder="设置新密码 (不支持中文)">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveSystemSettings()"><i class="fas fa-save"></i> 保存修改</button>
                     </div>
                 </div>
             </div>
