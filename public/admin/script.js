@@ -113,6 +113,7 @@ function showSection(id) {
     if(id === 'section-groups') loadGroups();
     if(id === 'section-send') loadTasks();
     if(id === 'section-receive') loadInboxList();
+    if(id === 'section-settings') loadSystemSettings();
 }
 
 // ================== 1. 账号管理 ==================
@@ -1000,6 +1001,43 @@ function downloadFile(content, filename) {
 
 function showToast(msg) {
     $("#mouse-toast").text(msg).fadeIn().delay(300).fadeOut();
+}
+
+// 加载当前系统设置
+function loadSystemSettings() {
+    fetch(`${API_BASE}/settings`, { headers: getHeaders() })
+    .then(r => r.json())
+    .then(res => {
+        $("#sys-username").val(res.username || "");
+        $("#sys-password").val(""); // 密码留空让用户填新的
+    });
+}
+
+// 保存系统设置
+function saveSystemSettings() {
+    const data = {
+        username: $("#sys-username").val().trim(),
+        password: $("#sys-password").val().trim()
+    };
+    if(!data.username || !data.password) return showToast("用户名和密码不能为空");
+    if(!confirm("确定修改系统登录账密吗？保存后需要使用新账密登录。")) return;
+
+    fetch(`${API_BASE}/settings`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        if(res.ok) {
+            showToast("系统设置修改成功！");
+            // 关键：将本地持久化的旧身份 Token 替换为后端下发的新 Token，防止后续请求报 401
+            localStorage.setItem("auth_token", res.newToken);
+            $("#sys-password").val("");
+        } else {
+            alert("修改失败: " + res.error);
+        }
+    });
 }
 
 function copyAccountInfo(id, type) {
