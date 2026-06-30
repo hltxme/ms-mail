@@ -49,7 +49,20 @@ export default {
       // 5. 全局身份验证 (Basic Auth)
       // 所有 /api/ 接口都需要鉴权
       const authHeader = request.headers.get("Authorization");
-      if (!(await checkAuth(authHeader, env))) {
+      const urlApiKey = url.searchParams.get("api_key");
+      
+      let isAuthenticated = false;
+      if (authHeader) {
+          isAuthenticated = await checkAuth(authHeader, env);
+      } else if (request.method === "GET" && urlApiKey) {
+          // 验证自定义 API Key
+          const apiKeyRow = await env.db.prepare("SELECT value FROM system_settings WHERE key='api_key'").first();
+          if (apiKeyRow && apiKeyRow.value && urlApiKey === apiKeyRow.value) {
+              isAuthenticated = true;
+          }
+      }
+
+      if (!isAuthenticated) {
         return jsonResp({ error: "Unauthorized" }, 401);
       }
    
@@ -713,7 +726,8 @@ async function handleSettings(req, env) {
     const method = req.method;
     if (method === 'GET') {
         const row = await env.db.prepare("SELECT value FROM system_settings WHERE key='admin_username'").first();
-        return jsonResp({ username: row ? row.value : 'admin' });
+        const apiKeyRow = await env.db.prepare("SELECT value FROM system_settings WHERE key='api_key'").first();
+        return jsonResp({ username: row ? row.value : 'admin', api_key: apiKeyRow ? apiKeyRow.value : '' });
     }
     if (method === 'PUT') {
         const d = await req.json();
@@ -726,6 +740,7 @@ async function handleSettings(req, env) {
 
         await env.db.prepare("UPDATE system_settings SET value=? WHERE key='admin_username'").bind(d.username).run();
         await env.db.prepare("UPDATE system_settings SET value=? WHERE key='admin_password'").bind(d.password).run();
+        await env.db.prepare("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('api_key', ?)").bind(d.api_key || "").run();
         
         // 生成新的 Basic Auth Token 供前端同步更新
         const newToken = "Basic " + btoa(d.username + ":" + d.password);
