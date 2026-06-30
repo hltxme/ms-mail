@@ -308,7 +308,10 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label small text-muted">密码</label>
-                            <input type="password" id="sys-password" class="form-control" placeholder="设置新密码 (不支持中文)">
+                            <div class="input-group">
+                                <input type="password" id="sys-password" class="form-control" placeholder="设置新密码 (不支持中文)">
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('sys-password', this)"><i class="fas fa-eye"></i></button>
+                            </div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label small text-muted">自定义 API Key (用于 GET 接口直连)</label>
