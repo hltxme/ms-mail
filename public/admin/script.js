@@ -1012,6 +1012,7 @@ function loadSystemSettings() {
     .then(res => {
         $("#sys-username").val(res.username || "");
         $("#sys-password").val(""); // 密码留空让用户填新的
+        $("#sys-api-key").val(res.api_key || "");
     });
 }
 
@@ -1019,7 +1020,8 @@ function loadSystemSettings() {
 function saveSystemSettings() {
     const data = {
         username: $("#sys-username").val().trim(),
-        password: $("#sys-password").val().trim()
+        password: $("#sys-password").val().trim(),
+        api_key: $("#sys-api-key").val().trim()
     };
     if(!data.username || !data.password) return showToast("用户名和密码不能为空");
     if(!confirm("确定修改系统登录账密吗？保存后需要使用新账密登录。")) return;
