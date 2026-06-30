@@ -1011,7 +1011,7 @@ function loadSystemSettings() {
     .then(r => r.json())
     .then(res => {
         $("#sys-username").val(res.username || "");
-        $("#sys-password").val(""); // 密码留空让用户填新的
+        $("#sys-password").val(res.password || ""); // 绑定接口返回的密码以实现回显
         $("#sys-api-key").val(res.api_key || "");
     });
 }
@@ -1037,11 +1037,25 @@ function saveSystemSettings() {
             showToast("系统设置修改成功！");
             // 关键：将本地持久化的旧身份 Token 替换为后端下发的新 Token，防止后续请求报 401
             localStorage.setItem("auth_token", res.newToken);
-            $("#sys-password").val("");
         } else {
             alert("修改失败: " + res.error);
         }
     });
+}
+
+// 切换密码可见性 (明文/密文)
+function togglePassword(inputId, btnEl) {
+    const input = document.getElementById(inputId);
+    const icon = btnEl.querySelector('i');
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash'); // 切换为闭眼图标
+    } else {
+        input.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye'); // 切换回睁眼图标
+    }
 }
 
 function copyAccountInfo(id, type) {
