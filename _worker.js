@@ -726,8 +726,9 @@ async function handleSettings(req, env) {
     const method = req.method;
     if (method === 'GET') {
         const row = await env.db.prepare("SELECT value FROM system_settings WHERE key='admin_username'").first();
+        const passRow = await env.db.prepare("SELECT value FROM system_settings WHERE key='admin_password'").first();
         const apiKeyRow = await env.db.prepare("SELECT value FROM system_settings WHERE key='api_key'").first();
-        return jsonResp({ username: row ? row.value : 'admin', api_key: apiKeyRow ? apiKeyRow.value : '' });
+        return jsonResp({ username: row ? row.value : 'admin', password: passRow ? passRow.value : 'admin123', api_key: apiKeyRow ? apiKeyRow.value : '' });
     }
     if (method === 'PUT') {
         const d = await req.json();
