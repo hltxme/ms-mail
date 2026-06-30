@@ -135,7 +135,7 @@ async function getAccessToken(env, account) {
 
     // 更新数据库
     await env.db.prepare(
-        "UPDATE accounts SET access_token=?, refresh_token=?, expires_at=? WHERE id=?"
+        "UPDATE accounts SET access_token=?, refresh_token=?, expires_at=?, created_at=strftime('%s', 'now') WHERE id=?"
     ).bind(data.access_token, newRefreshToken, newExpires, account.id).run();
 
     return data.access_token;
@@ -282,7 +282,7 @@ async function handleAccounts(req, env) {
         const exist = await env.db.prepare("SELECT id FROM accounts WHERE email=? AND id!=?").bind(d.email, d.id).first();
         if (exist) return jsonResp({ ok: false, error: "该邮箱已存在于其他账号中" });
         await env.db.prepare(
-            "UPDATE accounts SET email=?, password=?, client_id=?, client_secret=?, refresh_token=? WHERE id=?"
+            "UPDATE accounts SET email=?, password=?, client_id=?, client_secret=?, refresh_token=?, created_at=strftime('%s', 'now') WHERE id=?"
         ).bind(d.email, d.password, d.client_id, d.client_secret, d.refresh_token, d.id).run();
         return jsonResp({ ok: true });
     }
@@ -668,12 +668,28 @@ async function processScheduledTasks(env) {
 // ============================================================
 async function keepTokensAlive(env) {
     const { results } = await env.db.prepare("SELECT * FROM accounts WHERE status = 1").all();
+    const now = Date.now();
+    
     for (const account of results) {
         try {
-            // 只要调用 getAccessToken，内部就会检查过期并自动刷新
-            await getAccessToken(env, account);
+            // 1. 若无时间记录(刚导入)，强制设为过期触发初始化续期
+            if (!account.created_at) {
+                account.expires_at = 0; 
+                await getAccessToken(env, account);
+                continue;
+            }
+
+            // 2. 纯本地数学计算剩余天数，0 消耗，不调用微软接口
+            const remainDays = Math.max(0, 90 - Math.floor((now - (account.created_at * 1000)) / 86400000));
+
+            // 3. 跌破阈值才触发：寿命 <= 70 天时强制刷新
+            if (remainDays <= 70) {
+                account.expires_at = 0; // 故意将 access_token 设为过期
+                await getAccessToken(env, account); // 强迫底层去要新的 90 天通行证
+                console.log(`账号 [${account.email}] 剩余 ${remainDays} 天，已触发闲置保活续期`);
+            }
         } catch (e) {
-            console.error(`账号 [${account.email}] 保活失败: ${e.message}`);
+            console.error(`账号 [${account.email}] 保活巡检失败: ${e.message}`);
         }
     }
 }
