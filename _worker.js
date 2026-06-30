@@ -124,8 +124,10 @@ async function getAccessToken(env, account) {
     }
 
     if (data.error) {
-        throw new Error(`Token刷新失败: ${data.error_description || JSON.stringify(data)}`);
-    }
+            // [新增] 当微软明确返回报错（如修改密码导致失效）时，将 expires_at 设为 -1 作为异常标记
+            await env.db.prepare("UPDATE accounts SET expires_at=-1 WHERE id=?").bind(account.id).run();
+            throw new Error(`Token刷新失败: ${data.error_description || JSON.stringify(data)}`);
+        }
 
     // 计算新的过期时间
     const newExpires = Date.now() + (data.expires_in * 1000);
