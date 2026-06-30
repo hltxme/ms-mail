@@ -150,8 +150,8 @@ function renderAccountsTable() {
         tbody.html('<tr><td colspan="9" class="text-center p-4 text-muted">暂无账号或无匹配项</td></tr>');
     } else {
         list.forEach(acc => {
-            // 计算令牌剩余天数 (expires_at 是毫秒时间戳)
-            let remainDays = acc.expires_at ? Math.max(0, Math.ceil((acc.expires_at - Date.now()) / 86400000)) : '-';
+            // 计算令牌剩余天数 (根据 created_at 秒级时间戳计算 90 天有效期)
+            let remainDays = acc.created_at ? Math.max(0, 90 - Math.floor((Date.now() - (acc.created_at * 1000)) / 86400000)) : '-';
             const isChecked = (acc.status === undefined || acc.status == 1) ? 'checked' : '';
             const statusBadge = `<div class="form-check form-switch"><input class="form-check-input" type="checkbox" ${isChecked} onchange="updateAccountStatus(${acc.id}, this.checked)"></div>`;
             tbody.append(`
