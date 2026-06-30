@@ -152,6 +152,8 @@ function renderAccountsTable() {
         list.forEach(acc => {
             // 计算令牌剩余天数 (根据 created_at 秒级时间戳计算 90 天有效期)
             let remainDays = acc.created_at ? Math.max(0, 90 - Math.floor((Date.now() - (acc.created_at * 1000)) / 86400000)) : '-';
+            // [新增] 识别后端的 -1 异常死亡标记，并在前端渲染为红色的“异常”
+            if (acc.expires_at === -1) remainDays = '<span class="text-danger fw-bold">异常</span>';
             const isChecked = (acc.status === undefined || acc.status == 1) ? 'checked' : '';
             const statusBadge = `<div class="form-check form-switch"><input class="form-check-input" type="checkbox" ${isChecked} onchange="updateAccountStatus(${acc.id}, this.checked)"></div>`;
             tbody.append(`
