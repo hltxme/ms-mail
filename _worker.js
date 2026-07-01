@@ -2,7 +2,7 @@
  * _worker.js (Microsoft Graph API Edition)
  * 基于 Cloudflare Pages + D1
  * 环境变量: DB, ADMIN_USERNAME, ADMIN_PASSWORD
- */
+ **/
 
 export default {
     async fetch(request, env, ctx) {
