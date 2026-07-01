@@ -527,7 +527,7 @@ async function handleDirectRead(req, env) {
     
     const acc = await env.db.prepare("SELECT * FROM accounts WHERE email=?").bind(email).first();
     if (!acc) return jsonResp({ error: "Account not found in database (系统未录入该邮箱)" }, 404);
-    
+    try {
     const emails = await syncEmailsMS(env, acc.id, parseInt(limit));
         
         // [新增] 将 ms-mail 的内部格式，精准转换为 outlook-vercel 的格式
