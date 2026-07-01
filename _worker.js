@@ -528,9 +528,26 @@ async function handleDirectRead(req, env) {
     const acc = await env.db.prepare("SELECT * FROM accounts WHERE email=?").bind(email).first();
     if (!acc) return jsonResp({ error: "Account not found in database (系统未录入该邮箱)" }, 404);
     
-    try {
-        const emails = await syncEmailsMS(env, acc.id, parseInt(limit));
-        return jsonResp({ ok: true, data: emails });
+    const emails = await syncEmailsMS(env, acc.id, parseInt(limit));
+        
+        // [新增] 将 ms-mail 的内部格式，精准转换为 outlook-vercel 的格式
+        const compatibleFormat = emails.map(e => {
+            // 提取纯邮箱地址 (去除发件人名称，如 "团队 <a@b.com>" 变成 "a@b.com")
+            let pureEmail = e.sender;
+            const match = pureEmail.match(/<([^>]+)>/);
+            if (match) pureEmail = match[1];
+
+            return {
+                send: pureEmail,
+                subject: e.subject,
+                text: e.body,           // 映射为 text
+                html: e.htmlContent,    // 映射为 html
+                date: e.received_at     // 映射为 date
+            };
+        });
+        
+        // [修改] 直接返回数组，不再用 { ok: true, data: ... } 包裹
+        return jsonResp(compatibleFormat);
     } catch(e) {
         return jsonResp({ ok: false, error: e.message }, 500);
     }
