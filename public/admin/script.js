@@ -190,14 +190,14 @@ function showEmailDetails(el, emailStr) {
 
     // 获取当前点击元素(即那个 td 单元格)在屏幕上的实际位置
     const rect = el.getBoundingClientRect();
-    // 计算 fixed 定位：顶部与单元格的顶部对齐，右侧与单元格的右侧对齐
+    // 计算 fixed 定位：顶部与单元格顶部对齐，弹窗左边缘与单元格右边缘对齐（+10px是为了留一点呼吸间距，防遮挡原文本）
     const topPos = rect.top;
-    const rightPos = window.innerWidth - rect.right;
+    const leftPos = rect.right + 10;
 
     const formattedText = escapeHtml(emailStr).split(' ').join('\n');
-    // 注意下面 style 中的 top 和 right 改为了动态计算的变量，并移除了 transform 的居中偏移
+    // 注意下面 style 中的定位改为了 top 和 left
     const popupHtml = `
-        <div id="custom-email-popup" style="position: fixed; top: ${topPos}px; right: ${rightPos}px; background: #fff; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 10500; border: 1px solid #dee2e6; min-width: 280px; max-width: 90%;">
+        <div id="custom-email-popup" style="position: fixed; top: ${topPos}px; left: ${leftPos}px; background: #fff; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 10500; border: 1px solid #dee2e6; min-width: 280px; max-width: 90%;">
             <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
                 <strong class="text-primary"><i class="fas fa-list"></i> 完整内容</strong>
                 <i class="fas fa-times text-muted" style="cursor:pointer; font-size:1.2rem;" title="关闭" onclick="closeEmailPopup()"></i>
