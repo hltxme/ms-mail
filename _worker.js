@@ -525,7 +525,11 @@ async function handleDirectRead(req, env) {
     
     if (!email) return jsonResp({ error: "Missing parameter: email (需提供目标邮箱地址)" }, 400);
     
-    const acc = await env.db.prepare("SELECT * FROM accounts WHERE email=?").bind(email).first();
+    // [修改] 尝试精准匹配，如果失败则尝试模糊匹配(支持填入了多个别名的情况)
+    let acc = await env.db.prepare("SELECT * FROM accounts WHERE email=?").bind(email).first();
+    if (!acc) {
+        acc = await env.db.prepare("SELECT * FROM accounts WHERE email LIKE ?").bind(`%${email}%`).first();
+    }
     if (!acc) return jsonResp({ error: "Account not found in database (系统未录入该邮箱)" }, 404);
     try {
     const emails = await syncEmailsMS(env, acc.id, parseInt(limit));
@@ -561,7 +565,11 @@ async function handleDirectSend(req, env) {
         if (!d.email || !d.to || !d.subject || !d.content) {
             return jsonResp({ error: "Missing required parameters: email, to, subject, content" }, 400);
         }
-        const acc = await env.db.prepare("SELECT * FROM accounts WHERE email=?").bind(d.email).first();
+        // [修改] 同样增加对多个别名的模糊匹配支持
+        let acc = await env.db.prepare("SELECT * FROM accounts WHERE email=?").bind(d.email).first();
+        if (!acc) {
+            acc = await env.db.prepare("SELECT * FROM accounts WHERE email LIKE ?").bind(`%${d.email}%`).first();
+        } 
         if (!acc) return jsonResp({ error: "Account not found in database (系统未录入该发件邮箱)" }, 404);
         
         const res = await sendEmailMS(env, acc, d.to, d.subject, d.content);
