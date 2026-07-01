@@ -532,10 +532,17 @@ async function handleDirectRead(req, env) {
     }
     if (!acc) return jsonResp({ error: "Account not found in database (系统未录入该邮箱)" }, 404);
     try {
-    const emails = await syncEmailsMS(env, acc.id, parseInt(limit));
+    // [修改] 为了防止别名混流导致数量不够，底层先拉取较多邮件（例如最近 10 封）作为筛选池
+        let rawEmails = await syncEmailsMS(env, acc.id, 10);
+        
+        // [新增] 严格过滤：只保留“收件人地址”中包含当前请求别名 (email) 的邮件
+        let filteredEmails = rawEmails.filter(e => (e.receiver || "").toLowerCase().includes(email.toLowerCase()));
+        
+        // [新增] 按脚本实际要求的 limit 数量进行截取
+        const emailsToFormat = filteredEmails.slice(0, parseInt(limit));
         
         // [新增] 将 ms-mail 的内部格式，精准转换为 outlook-vercel 的格式
-        const compatibleFormat = emails.map(e => {
+        const compatibleFormat = emailsToFormat.map(e => {
             // 提取纯邮箱地址 (去除发件人名称，如 "团队 <a@b.com>" 变成 "a@b.com")
             let pureEmail = e.sender;
             const match = pureEmail.match(/<([^>]+)>/);
