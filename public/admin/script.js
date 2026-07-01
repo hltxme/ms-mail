@@ -156,10 +156,17 @@ function renderAccountsTable() {
             if (acc.expires_at === -1) remainDays = '<span class="text-danger fw-bold">异常</span>';
             const isChecked = (acc.status === undefined || acc.status == 1) ? 'checked' : '';
             const statusBadge = `<div class="form-check form-switch"><input class="form-check-input" type="checkbox" ${isChecked} onchange="updateAccountStatus(${acc.id}, this.checked)"></div>`;
+            // 处理邮箱地址：按空格截断，并在悬浮时按空格换行
+            const fullEmail = acc.email || '-';
+            let displayEmail = escapeHtml(fullEmail);
+            let hoverEmail = escapeHtml(fullEmail).replace(/ /g, '&#10;');
+            if (fullEmail.includes(' ')) {
+                displayEmail = escapeHtml(fullEmail.split(' ')[0]) + '...';
+            }
             tbody.append(`
                 <tr>
                     <td><input type="checkbox" class="acc-check" value="${acc.id}"></td>
-                    <td class="fw-bold text-primary cursor-pointer" onclick="openEditAccount(${acc.id})">${escapeHtml(acc.email||'-')}</td>
+                    <td class="fw-bold text-primary cursor-pointer" title="${hoverEmail}" onclick="showEmailDetails('${escapeHtml(fullEmail).replace(/'/g, "\\'")}')">${displayEmail}</td>
                     <td>${escapeHtml(acc.password||'-')}</td>
                     <td class="text-truncate" style="max-width: 120px;" title="${escapeHtml(acc.client_id||'')}">${escapeHtml(acc.client_id||'-')}</td>
                     <td class="text-truncate" style="cursor:pointer; max-width: 100px;" onclick="copyStr('${acc.client_secret||''}', '已复制Secret')" title="点击复制">${acc.client_secret ? '******' : '-'}</td>
@@ -175,6 +182,11 @@ function renderAccountsTable() {
         });
     }
     $("#acc-page-info").text(`共 ${filtered.length} 条 (第 ${page}/${Math.ceil(filtered.length/size)||1} 页)`);
+}
+
+// 弹出显示完整邮箱内容的窗口 (按空格换行)
+function showEmailDetails(emailStr) {
+    alert(emailStr.split(' ').join('\n'));
 }
 
 // [修改] 过滤账号 (支持分页)
