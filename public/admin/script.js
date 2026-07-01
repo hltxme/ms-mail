@@ -184,9 +184,41 @@ function renderAccountsTable() {
     $("#acc-page-info").text(`共 ${filtered.length} 条 (第 ${page}/${Math.ceil(filtered.length/size)||1} 页)`);
 }
 
-// 弹出显示完整邮箱内容的窗口 (按空格换行)
+// 弹出显示完整邮箱内容的窗口 (自定义悬浮层，按空格换行)
 function showEmailDetails(emailStr) {
-    alert(emailStr.split(' ').join('\n'));
+    closeEmailPopup(); // 先清除可能存在的旧弹窗
+
+    const formattedText = escapeHtml(emailStr).split(' ').join('\n');
+    const popupHtml = `
+        <div id="custom-email-popup" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 10500; border: 1px solid #dee2e6; min-width: 280px; max-width: 90%;">
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                <strong class="text-primary"><i class="fas fa-list"></i> 完整内容</strong>
+                <i class="fas fa-times text-muted" style="cursor:pointer; font-size:1.2rem;" title="关闭" onclick="closeEmailPopup()"></i>
+            </div>
+            <div style="white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; color: #333; line-height: 1.6; word-break: break-all;">${formattedText}</div>
+        </div>
+    `;
+    
+    $('body').append(popupHtml);
+
+    // 延迟绑定事件，避免当前点击事件冒泡直接触发关闭
+    setTimeout(() => {
+        // 1. 点击弹窗外任意地方关闭
+        $(document).on('click.emailPopup', function(e) {
+            if (!$(e.target).closest('#custom-email-popup').length) {
+                closeEmailPopup();
+            }
+        });
+        // 2. 任何区域滚动时自动关闭 (使用 true 捕获阶段，能监听到页面和内部列表 div 的滚动)
+        window.addEventListener('scroll', closeEmailPopup, true);
+    }, 10);
+}
+
+// 统一关闭弹窗与解绑事件
+function closeEmailPopup() {
+    $('#custom-email-popup').fadeOut(150, function() { $(this).remove(); });
+    $(document).off('click.emailPopup');
+    window.removeEventListener('scroll', closeEmailPopup, true);
 }
 
 // [修改] 过滤账号 (支持分页)
