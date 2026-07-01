@@ -166,7 +166,7 @@ function renderAccountsTable() {
             tbody.append(`
                 <tr>
                     <td><input type="checkbox" class="acc-check" value="${acc.id}"></td>
-                    <td class="fw-bold text-primary cursor-pointer" title="${hoverEmail}" onclick="showEmailDetails('${escapeHtml(fullEmail).replace(/'/g, "\\'")}')">${displayEmail}</td>
+                    <td class="fw-bold text-primary cursor-pointer" title="${hoverEmail}" onclick="showEmailDetails(this, '${escapeHtml(fullEmail).replace(/'/g, "\\'")}')">${displayEmail}</td>
                     <td>${escapeHtml(acc.password||'-')}</td>
                     <td class="text-truncate" style="max-width: 120px;" title="${escapeHtml(acc.client_id||'')}">${escapeHtml(acc.client_id||'-')}</td>
                     <td class="text-truncate" style="cursor:pointer; max-width: 100px;" onclick="copyStr('${acc.client_secret||''}', '已复制Secret')" title="点击复制">${acc.client_secret ? '******' : '-'}</td>
@@ -184,13 +184,20 @@ function renderAccountsTable() {
     $("#acc-page-info").text(`共 ${filtered.length} 条 (第 ${page}/${Math.ceil(filtered.length/size)||1} 页)`);
 }
 
-// 弹出显示完整邮箱内容的窗口 (自定义悬浮层，按空格换行)
-function showEmailDetails(emailStr) {
+// 弹出显示完整邮箱内容的窗口 (相对于点击元素定位，顶部和右边对齐)
+function showEmailDetails(el, emailStr) {
     closeEmailPopup(); // 先清除可能存在的旧弹窗
 
+    // 获取当前点击元素(即那个 td 单元格)在屏幕上的实际位置
+    const rect = el.getBoundingClientRect();
+    // 计算 fixed 定位：顶部与单元格的顶部对齐，右侧与单元格的右侧对齐
+    const topPos = rect.top;
+    const rightPos = window.innerWidth - rect.right;
+
     const formattedText = escapeHtml(emailStr).split(' ').join('\n');
+    // 注意下面 style 中的 top 和 right 改为了动态计算的变量，并移除了 transform 的居中偏移
     const popupHtml = `
-        <div id="custom-email-popup" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #fff; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 10500; border: 1px solid #dee2e6; min-width: 280px; max-width: 90%;">
+        <div id="custom-email-popup" style="position: fixed; top: ${topPos}px; right: ${rightPos}px; background: #fff; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 10500; border: 1px solid #dee2e6; min-width: 280px; max-width: 90%;">
             <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
                 <strong class="text-primary"><i class="fas fa-list"></i> 完整内容</strong>
                 <i class="fas fa-times text-muted" style="cursor:pointer; font-size:1.2rem;" title="关闭" onclick="closeEmailPopup()"></i>
