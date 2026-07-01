@@ -345,10 +345,10 @@
                                 <ul class="small text-muted mb-3">
                                     <li><code>api_key</code> (必需): URL 传参，填写您在【系统设置】中配置的 API Key。</li>
                                     <li><code>email</code> (必需): 您想要读取的目标微软邮箱地址（必须是已添加进本系统的邮箱）。</li>
-                                    <li><code>limit</code> (可选): 限制返回的邮件数量，默认只获取最新 1 封。</li>
+                                    <li><code>limit</code> (可选): 限制返回的邮件数量，默认只获取最新 1 封。如果是3封：<code>https://您的域名/api/direct/read?api_key=系统设置里的秘钥&amp;email=test@outlook.com&amp;limit=3</code></li>
                                 </ul>
                                 <p class="small fw-bold mb-1">GET 调用示例 (cURL)：</p>
-                                <pre class="bg-dark text-light p-3 rounded small">curl -X GET "https://您的域名/api/direct/read?api_key=系统设置里的秘钥&email=test@outlook.com&limit=3"</pre>
+                                <pre class="bg-dark text-light p-3 rounded small">curl -X GET "https://您的域名/api/direct/read?api_key=系统设置里的秘钥&email=test@outlook.com"</pre>
                                 <p class="small fw-bold mb-1 mt-3">返回格式示例 (JSON)：</p>
                                 <pre class="bg-light text-dark p-3 rounded small border">{
   "ok": true,
