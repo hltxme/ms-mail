@@ -255,7 +255,11 @@ function openEditAccount(id) {
     $("#acc-email").val(acc.email);
     $("#acc-password").val(acc.password || "");
     
-    const config = [acc.client_id, acc.client_secret, acc.refresh_token].filter(x=>x).join(', ');
+    const config = [
+        acc.client_id || "", 
+        acc.client_secret || "", 
+        acc.refresh_token || ""
+    ].join(', ');
     $("#acc-api-config").val(config);
     
     new bootstrap.Modal(document.getElementById('addAccountModal')).show();
@@ -263,7 +267,7 @@ function openEditAccount(id) {
 
 function saveAccount() {
     const rawConfig = $("#acc-api-config").val().trim();
-    const parts = rawConfig.split(/[,，|]/).map(s => s.trim());
+    const parts = rawConfig.split(/[,，|\t]/).map(s => s.trim());
     
     const data = {
         id: $("#acc-id").val() || undefined,
