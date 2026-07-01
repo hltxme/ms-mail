@@ -73,6 +73,8 @@ export default {
       if (path.startsWith('/api/emails')) return handleEmails(request, env);
       if (path.startsWith('/api/rules')) return handleRules(request, env);
       if (path.startsWith('/api/settings')) return handleSettings(request, env);
+      if (path.startsWith('/api/direct/read')) return handleDirectRead(request, env);
+      if (path.startsWith('/api/direct/send')) return handleDirectSend(request, env);
       return new Response("MS Backend Active", { headers: corsHeaders() });
     },
     // 定时任务触发器 (支持区分发信和保活)
@@ -508,6 +510,47 @@ async function handleGroups(req, env) {
         await env.db.prepare("UPDATE access_rules SET group_id=NULL WHERE group_id=?").bind(id).run();
         await env.db.prepare("DELETE FROM filter_groups WHERE id=?").bind(id).run();
         return jsonResp({ ok: true });
+    }
+}
+// 6. 面向外部程序(脚本/AI)的直连读写接口
+async function handleDirectRead(req, env) {
+    const url = new URL(req.url);
+    let params = {};
+    if (req.method === 'POST') {
+        try { params = await req.json(); } catch(e) {}
+    }
+    // 支持 GET url传参 或 POST JSON 传参
+    const email = params.email || url.searchParams.get('email');
+    const limit = params.limit || url.searchParams.get('limit') || 1; // 默认只获取最新1封
+    
+    if (!email) return jsonResp({ error: "Missing parameter: email (需提供目标邮箱地址)" }, 400);
+    
+    const acc = await env.db.prepare("SELECT * FROM accounts WHERE email=?").bind(email).first();
+    if (!acc) return jsonResp({ error: "Account not found in database (系统未录入该邮箱)" }, 404);
+    
+    try {
+        const emails = await syncEmailsMS(env, acc.id, parseInt(limit));
+        return jsonResp({ ok: true, data: emails });
+    } catch(e) {
+        return jsonResp({ ok: false, error: e.message }, 500);
+    }
+}
+
+async function handleDirectSend(req, env) {
+    if (req.method !== 'POST') return jsonResp({ error: "Method not allowed (仅支持 POST)" }, 405);
+    try {
+        const d = await req.json();
+        // 校验必填参数
+        if (!d.email || !d.to || !d.subject || !d.content) {
+            return jsonResp({ error: "Missing required parameters: email, to, subject, content" }, 400);
+        }
+        const acc = await env.db.prepare("SELECT * FROM accounts WHERE email=?").bind(d.email).first();
+        if (!acc) return jsonResp({ error: "Account not found in database (系统未录入该发件邮箱)" }, 404);
+        
+        const res = await sendEmailMS(env, acc, d.to, d.subject, d.content);
+        return jsonResp({ ok: res.success, error: res.error });
+    } catch(e) {
+        return jsonResp({ error: e.message }, 500);
     }
 }
 
